@@ -169,3 +169,16 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Project-specific
+jigsaw_toxicity_data/
+models/
+results/
+runs/
+*.pt
+*.pth
+*.csv
+*.zip
+.kaggle/
+kaggle.json
+en_core_web_*/

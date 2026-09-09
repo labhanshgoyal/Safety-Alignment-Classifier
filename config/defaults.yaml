@@ -1,0 +1,33 @@
+data:
+  directory: "./jigsaw_toxicity_data"
+  train_size: 5000
+  test_size: 1000
+  class_balancing: true
+  max_seq_length: 256
+
+model:
+  name: "roberta-base"
+  dropout: 0.3
+  num_classes: 2
+
+training:
+  epochs: 3
+  batch_size: 64
+  learning_rate: 2.0e-5
+  optimizer: "adamw"
+
+adversarial:
+  transform_prob: 0.4
+  apply_back_translation: false
+  fully_adversarial: false
+
+rl:
+  epochs: 4
+  learning_rate: 3.0e-4
+  epsilon: 0.2
+  policy_hidden_dim: 128
+
+paths:
+  classifier_model: "./models/classifier.pt"
+  policy_model: "./models/policy.pt"
+  results: "./results/"
