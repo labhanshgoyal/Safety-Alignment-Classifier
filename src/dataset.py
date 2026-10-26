@@ -133,26 +133,26 @@ class AdversarialTextDataset(nn_Dataset):
         self.apply_back_translation = apply_back_translation
         self.tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
         if fully_adversarial:
-            self.transform_prob = torch.full(len(original_dataset), transform_prob)
+            self.transform_prob = torch.full((len(original_dataset),), transform_prob)
         else:
             random_indices = torch.randint(2, (len(original_dataset),)) 
             prob_values = torch.tensor([0, transform_prob]) 
             self.transform_prob = prob_values[random_indices] 
         self.is_adversarial = self.transform_prob != 0
 
-    def adversarial_transform(self, text):
+    def adversarial_transform(self, text, transform_prob):
         """Applies multiple perturbations randomly."""
-        if random.random() < self.transform_prob:
-            text = keyboard_typo(text, self.transform_prob)
-        if random.random() < self.transform_prob:
-            text = random_char_insertion(text, self.transform_prob)
-        if random.random() < self.transform_prob:
-            text = synonym_replacement(text, self.transform_prob)
-        if random.random() < self.transform_prob:
-            text = homophone_substitution(text, self.transform_prob)
-        if random.random() < self.transform_prob:
+        if random.random() < transform_prob:
+            text = keyboard_typo(text, transform_prob)
+        if random.random() < transform_prob:
+            text = random_char_insertion(text, transform_prob)
+        if random.random() < transform_prob:
+            text = synonym_replacement(text, transform_prob)
+        if random.random() < transform_prob:
+            text = homophone_substitution(text, transform_prob)
+        if random.random() < transform_prob:
             text = word_order_shuffle(text, window_size=2)
-        if self.apply_back_translation and random.random() < self.transform_prob:
+        if self.apply_back_translation and random.random() < transform_prob:
             text = back_translation(text)
         return text
 
@@ -248,10 +248,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     data_directory = args.data_directory #"./jigsaw_toxicity_data"
-    trainset, testset = load_toxicity_dataset(data_directory)
 
-    train_dataset = get_dataset(trainset, dataset_size = 5000, class_balancing = True)
-    test_dataset = get_dataset(testset, dataset_size = 1000, class_balancing = True)
+    train_dataset = get_dataset(data_directory, dataset_size=5000, split='train', class_balancing=True)
+    test_dataset = get_dataset(data_directory, dataset_size=1000, split='test', class_balancing=True)
 
     train_dataloader = get_dataloader(train_dataset, batch_size=64)
     test_dataloader = get_dataloader(test_dataset, batch_size=64)
