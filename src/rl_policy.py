@@ -48,7 +48,7 @@ class PPOAgent:
         return reward  
 
 # Environment simulation
-def train_rl_classifier(model, policy_network, adv_dataloader, epochs=4):
+def train_rl_classifier(model, policy_network, adv_dataloader, device, epochs=4):
     policy_network.train()
     agent = PPOAgent(model, policy_network)
     optimizer = optim.Adam(policy_network.parameters(), lr=3e-4)
@@ -70,7 +70,7 @@ def train_rl_classifier(model, policy_network, adv_dataloader, epochs=4):
             states = model(input_ids, attention_mask).detach()  
             actions, old_probs = agent.select_action(states)
 
-            rewards = agent.compute_reward(model, input_ids, attention_mask, labels, is_adversarial)
+            rewards = agent.compute_reward(input_ids, attention_mask, labels, is_adversarial)
             new_logits = agent.policy(states)
             new_probs = F.softmax(new_logits, dim=-1).gather(1, actions)
             loss = agent.compute_loss(old_probs, new_probs, rewards)
@@ -101,7 +101,7 @@ def evaluate_rl_classifier(classifier, policy_network, dataloader, device):
             input_ids, attention_mask, labels = (
                 batch["input_ids"].to(device),
                 batch["attention_mask"].to(device),
-                batch["labels"].to(device),
+                batch["label"].to(device),
             )
 
             logits = classifier(input_ids, attention_mask)
@@ -146,17 +146,11 @@ if __name__ == "__main__":
 
     ## train
     train_dataset = get_dataset(data_directory, dataset_size=5000, split='train', class_balancing=True)
-    adv_train_dataloader = get_adversarial_dataloader(train_dataset, batch_size=64, transform_prob=0.4)
-    agent = train_rl_classifier(model, policy_network, adv_train_dataloader)
+    _, adv_train_dataloader = get_adversarial_dataloader(train_dataset, batch_size=64, transform_prob=0.4)
+    agent = train_rl_classifier(model, policy_network, adv_train_dataloader, device)
     save_model(agent.policy, policy_model_path)
     
     ## evaluate
     test_dataset = get_dataset(data_directory, dataset_size=1000, split='test', class_balancing=True)
-    adv_test_dataloader = get_adversarial_dataloader(test_dataset, batch_size=64, transform_prob=0.4)
+    _, adv_test_dataloader = get_adversarial_dataloader(test_dataset, batch_size=64, transform_prob=0.4)
     evaluate_rl_classifier(model, agent.policy, adv_test_dataloader, device)
-
-
-
-
-
-
