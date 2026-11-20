@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from dataset import get_adversarial_dataloader, get_dataset
 import argparse
-from model import ToxicityClassifier, save_model
+from model import ToxicityClassifier, save_model, load_model
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 class PolicyNetwork(nn.Module):
@@ -112,14 +112,24 @@ def evaluate_rl_classifier(classifier, policy_network, dataloader, device):
             preds_list.extend(predictions.cpu().numpy())
             labels_list.extend(labels.cpu().numpy())
 
-    accuracy = accuracy_score(labels_list, preds_list)
-    precision, recall, f1, _ = precision_recall_fscore_support(labels_list, preds_list, average="binary")
+    accuracy = float(accuracy_score(labels_list, preds_list))
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        labels_list, preds_list, average="binary", zero_division=0
+    )
+
+    metrics = {
+        "accuracy": accuracy,
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+    }
 
     print(f"Test Accuracy: {accuracy:.4f}")
     print(f"Precision: {precision:.4f}")
     print(f"Recall: {recall:.4f}")
     print(f"F1-score: {f1:.4f}")
 
+    return metrics
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a RL based policy for a pretrained toxicity classifier")
@@ -134,8 +144,7 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = ToxicityClassifier()
-    model.load_state_dict(torch.load(classifier_model_path, weights_only=True, map_location=torch.device('cpu')))
+    model = load_model(classifier_model_path, device=device)
     
     policy_network = PolicyNetwork(input_dim=2, num_classes=2)
     if torch.cuda.device_count() > 1:
