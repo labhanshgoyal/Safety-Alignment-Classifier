@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional, Tuple
 from datasets import Dataset
 import pandas as pd
 import torch
-from torch.utils.data import Dataloader, Dataset as TorchDataset
+from torch.utils.data import DataLoader, Dataset as TorchDataset
 from transformers import RobertaTokenizer
 
 from data.adversarial import apply_adversarial_perturbations
