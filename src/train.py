@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
 
+from config import AppConfig
 from dataset import get_dataloader, get_dataset
 from model import ToxicityClassifier, save_model
 
@@ -17,17 +18,7 @@ def evaluate_validation(
     criterion: nn.Module,
     device: torch.device,
 ) -> tuple[float, float]:
-    """Computes loss and accuracy on a validation DataLoader.
-
-    Args:
-        model: PyTorch classification model.
-        val_loader: DataLoader for validation data.
-        criterion: Loss function.
-        device: Device to run evaluation on.
-
-    Returns:
-        Tuple of (avg_val_loss, val_accuracy).
-    """
+    """Computes loss and accuracy on a validation DataLoader."""
     model.eval()
     val_loss = 0.0
     correct = 0
@@ -62,21 +53,7 @@ def train(
     scheduler: Optional[object] = None,
     val_loader: Optional[DataLoader] = None,
 ) -> Dict[str, List[float]]:
-    """Trains the model with optional per-epoch validation and learning rate scheduling.
-
-    Args:
-        model: PyTorch classifier to train.
-        train_loader: DataLoader for training set.
-        optimizer: Optimizer for backprop.
-        criterion: Loss function.
-        device: Device to place tensors on.
-        epochs: Number of training epochs.
-        scheduler: Optional learning rate scheduler.
-        val_loader: Optional validation DataLoader for monitoring generalization.
-
-    Returns:
-        Dictionary containing epoch-level history for losses and accuracies.
-    """
+    """Trains the model with optional per-epoch validation and learning rate scheduling."""
     history: Dict[str, List[float]] = {
         "train_loss": [],
         "train_acc": [],
@@ -143,34 +120,53 @@ def train(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a toxicity classifier")
-    parser.add_argument("--data_directory", type=str, required=True, help="Path to dataset directory.")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to save trained weights.")
-    parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs (default: 3).")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size (default: 32).")
-    parser.add_argument("--lr", type=float, default=2e-5, help="Learning rate (default: 2e-5).")
-    parser.add_argument("--train_size", type=int, default=5000, help="Number of training samples (default: 5000).")
-    parser.add_argument("--val_size", type=int, default=1000, help="Number of validation samples (default: 1000).")
+    parser.add_argument("--config", type=str, default="config/defaults.yaml", help="Path to YAML config file.")
+    parser.add_argument("--data_directory", type=str, default=None, help="Override path to dataset directory.")
+    parser.add_argument("--model_path", type=str, default=None, help="Override path to save trained weights.")
+    parser.add_argument("--epochs", type=int, default=None, help="Override number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=None, help="Override batch size.")
+    parser.add_argument("--lr", type=float, default=None, help="Override learning rate.")
+    parser.add_argument("--train_size", type=int, default=None, help="Override number of training samples.")
+    parser.add_argument("--val_size", type=int, default=None, help="Override number of validation samples.")
     args = parser.parse_args()
+
+    # Load defaults from YAML configuration
+    cfg = AppConfig.from_yaml(args.config)
+
+    # CLI arguments override YAML values if provided
+    data_dir = args.data_directory or cfg.data.directory
+    model_path = args.model_path or cfg.paths.classifier_model
+    epochs = args.epochs if args.epochs is not None else cfg.training.epochs
+    batch_size = args.batch_size if args.batch_size is not None else cfg.training.batch_size
+    lr = args.lr if args.lr is not None else cfg.training.learning_rate
+    train_size = args.train_size if args.train_size is not None else cfg.data.train_size
+    val_size = args.val_size if args.val_size is not None else cfg.data.test_size
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    print(f"Loaded config from: {args.config} (epochs={epochs}, batch_size={batch_size}, lr={lr})")
 
     # Load balanced train and validation datasets
-    train_dataset = get_dataset(args.data_directory, dataset_size=args.train_size, split="train", class_balancing=True)
-    val_dataset = get_dataset(args.data_directory, dataset_size=args.val_size, split="test", class_balancing=True)
+    train_dataset = get_dataset(data_dir, dataset_size=train_size, split="train", class_balancing=cfg.data.class_balancing)
+    val_dataset = get_dataset(data_dir, dataset_size=val_size, split="test", class_balancing=cfg.data.class_balancing)
 
-    train_loader = get_dataloader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = get_dataloader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = get_dataloader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = get_dataloader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    model = ToxicityClassifier().to(device)
+    model = ToxicityClassifier(
+        pretrained_model_name=cfg.model.name,
+        dropout_rate=cfg.model.dropout,
+        num_classes=cfg.model.num_classes,
+    ).to(device)
+
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
 
     # Learning rate schedule: linear warmup over 10% of total training steps, then linear decay
-    total_training_steps = len(train_loader) * args.epochs
+    total_training_steps = len(train_loader) * epochs
     warmup_steps = int(total_training_steps * 0.1)
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
@@ -184,9 +180,9 @@ if __name__ == "__main__":
         optimizer=optimizer,
         criterion=criterion,
         device=device,
-        epochs=args.epochs,
+        epochs=epochs,
         scheduler=scheduler,
         val_loader=val_loader,
     )
 
-    save_model(model, args.model_path)
+    save_model(model, model_path)
